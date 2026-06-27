@@ -1,0 +1,7 @@
+# Core
+torch>=2.0          # install the CUDA build for GPU training (see pytorch.org)
+numpy>=1.24
+
+# Optional
+# Pillow>=10        # only for rendering preview images
+# vgamepad>=0.1     # virtual gamepad output for deploy; the CSP path (--csp) needs none of this

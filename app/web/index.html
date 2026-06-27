@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PIT WALL · AC training control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@300;400;500;600;700&family=Saira+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">PIT&nbsp;WALL</span>
+    <span class="brand-sub">AC · QR-SAC · CUDA</span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="launch">Launch</button>
+    <button class="tab" data-view="garage">Garage</button>
+  </nav>
+  <div class="status-strip" id="statusStrip">
+    <button class="hdr-stop" id="hdrStop" hidden>■ STOP</button>
+    <div class="chip"><span class="chip-k">AC</span><span class="chip-v" id="acState">scanning…</span></div>
+    <div class="chip"><span class="chip-k">DEVICE</span><span class="chip-v" id="devState">—</span></div>
+    <div class="chip"><span class="chip-k">CARS</span><span class="chip-v" id="carCount">—</span></div>
+    <div class="chip"><span class="chip-k">TRACKS</span><span class="chip-v" id="trkCount">—</span></div>
+    <div class="chip gpu-chip" id="gpuChip" title="GPU utilisation · memory · temp">
+      <span class="chip-k">GPU</span>
+      <span class="gpu-bar"><span class="gpu-fill" id="gpuFill"></span></span>
+      <span class="chip-v" id="gpuState">—</span>
+    </div>
+    <div class="chip live-chip" id="liveChip"><span class="dot"></span><span class="chip-v" id="liveState">idle</span></div>
+  </div>
+</header>
+
+<main class="wall" id="launchView">
+
+  <!-- ░░ LEFT: THE GRID — pick car + track ░░ -->
+  <section class="rail" aria-label="Grid selection">
+    <div class="picker">
+      <div class="picker-head">
+        <h2 class="eyebrow">Garage</h2>
+        <input class="search" id="carSearch" placeholder="filter cars…" autocomplete="off">
+      </div>
+      <div class="list" id="carList" role="listbox" aria-label="Cars"></div>
+    </div>
+    <div class="picker">
+      <div class="picker-head">
+        <h2 class="eyebrow">Circuit</h2>
+        <input class="search" id="trackSearch" placeholder="filter tracks…" autocomplete="off">
+      </div>
+      <div class="list" id="trackList" role="listbox" aria-label="Tracks"></div>
+    </div>
+  </section>
+
+  <!-- ░░ CENTER: STINT CONFIG + LAUNCH ░░ -->
+  <section class="deck">
+    <div class="loadout">
+      <article class="slot" id="carSlot">
+        <div class="slot-img"><img id="carImg" alt=""><span class="slot-empty">no car</span></div>
+        <div class="slot-meta">
+          <span class="eyebrow">Car</span>
+          <h3 id="carName">— select a car —</h3>
+          <p id="carSpec" class="spec"></p>
+          <button class="calib-btn" id="calibBtn" hidden>◉ Calibrate physics</button>
+        </div>
+      </article>
+      <article class="slot" id="trackSlot">
+        <div class="slot-img"><img id="trackImg" alt=""><span class="slot-empty">no track</span></div>
+        <div class="slot-meta">
+          <span class="eyebrow">Track</span>
+          <h3 id="trackName">— select a track —</h3>
+          <p id="trackSpec" class="spec"></p>
+        </div>
+      </article>
+    </div>
+
+    <div class="config">
+      <div class="cfg-group">
+        <span class="eyebrow">Agents on the GPU</span>
+        <div class="seg" id="agentSeg"></div>
+      </div>
+      <div class="cfg-group">
+        <span class="eyebrow">Stint length</span>
+        <div class="seg" id="lengthSeg"></div>
+      </div>
+    </div>
+
+    <!-- ░ SIGNATURE: start-light gantry = launch control ░ -->
+    <div class="launch">
+      <div class="gantry" id="gantry" role="group" aria-label="Start lights">
+        <div class="light" data-stage="VALIDATE"><span></span></div>
+        <div class="light" data-stage="ALLOCATE"><span></span></div>
+        <div class="light" data-stage="SEED"><span></span></div>
+        <div class="light" data-stage="WARM"><span></span></div>
+        <div class="light" data-stage="IGNITE"><span></span></div>
+      </div>
+      <div class="launch-row">
+        <button class="deploy" id="deployBtn" disabled>DEPLOY STINT</button>
+        <div class="launch-readout">
+          <span class="lr-line" id="launchStage">pick a car and a trainable track</span>
+          <span class="lr-sub" id="launchSub">training runs on the GPU — Assetto Corsa stays smooth</span>
+        </div>
+      </div>
+      <canvas class="swarm" id="swarm" height="120"></canvas>
+    </div>
+
+    <!-- ░ LIVE TRACK — watch the agents drive in real time ░ -->
+    <div class="trackview" id="trackview" data-on="false">
+      <div class="tv-head">
+        <h2 class="eyebrow">Live track</h2>
+        <div class="tv-right">
+          <span class="tv-legend"><i class="lg slow"></i>slow<i class="lg mid"></i><i class="lg fast"></i>flat-out</span>
+          <span class="tv-meta" id="tvMeta">—</span>
+        </div>
+      </div>
+      <canvas class="track-canvas" id="trackCanvas"></canvas>
+    </div>
+
+    <!-- ░ VOXEL MAP — build the surface-classified grid from the track's real mesh ░ -->
+    <div class="voxview" id="voxview" data-on="false">
+      <div class="tv-head">
+        <h2 class="eyebrow">Voxel map · real mesh</h2>
+        <div class="tv-right">
+          <span class="vox-legend" id="voxLegend"></span>
+          <button class="vox-btn" id="voxBtn">Build voxels</button>
+        </div>
+      </div>
+      <div class="vox-body">
+        <canvas class="vox-canvas" id="voxCanvas"></canvas>
+        <div class="vox-stat" id="voxStat">Pick a track, then build its voxel map from the .kn5 mesh — road, grass, kerbs and the real walls.</div>
+      </div>
+      <div class="vox-bar"><div class="vox-fill" id="voxFill"></div></div>
+    </div>
+  </section>
+
+  <!-- ░░ RIGHT: LIVE TELEMETRY ░░ -->
+  <aside class="telemetry" id="telemetry" aria-label="Live telemetry" data-on="false">
+    <div class="tele-head">
+      <h2 class="eyebrow">Stint telemetry</h2>
+      <span class="phase" id="phase">STANDBY</span>
+    </div>
+    <canvas class="scope" id="scope" height="120"></canvas>
+    <!-- ░ fastest car's live steering wheel + pedals ░ -->
+    <div class="wheelbox" id="wheelbox">
+      <div class="wheel-wrap">
+        <canvas class="wheel" id="wheelCanvas" width="150" height="150"></canvas>
+        <span class="wheel-deg" id="wheelDeg">0°</span>
+      </div>
+      <div class="wheel-side">
+        <span class="ro-k">FASTEST CAR</span>
+        <div class="pedals">
+          <div class="ped"><span class="ped-k">THR</span><div class="ped-bar"><div class="ped-fill thr" id="pedThr"></div></div></div>
+          <div class="ped"><span class="ped-k">BRK</span><div class="ped-bar"><div class="ped-fill brk" id="pedBrk"></div></div></div>
+        </div>
+        <span class="wheel-spd" id="wheelSpd">— km/h</span>
+      </div>
+    </div>
+    <div class="readouts">
+      <div class="ro"><span class="ro-k">STEP</span><span class="ro-v" id="roStep">—</span></div>
+      <div class="ro"><span class="ro-k">REWARD</span><span class="ro-v" id="roReward">—</span></div>
+      <div class="ro"><span class="ro-k">BEST LAP</span><span class="ro-v" id="roBest">—</span></div>
+      <div class="ro"><span class="ro-k">AVG LAP</span><span class="ro-v" id="roAvg">—</span></div>
+      <div class="ro"><span class="ro-k">AGENTS</span><span class="ro-v" id="roAgents">—</span></div>
+      <div class="ro"><span class="ro-k">CRASH/STEP</span><span class="ro-v" id="roCrash">—</span></div>
+      <div class="ro"><span class="ro-k">AVG SPEED</span><span class="ro-v" id="roSpeed">—</span></div>
+      <div class="ro"><span class="ro-k">THROUGHPUT</span><span class="ro-v" id="roTps">—</span></div>
+    </div>
+    <div class="explore">
+      <div class="ex-head"><span class="ro-k">EXPLORE</span><span class="ro-k">EXPLOIT</span></div>
+      <div class="ex-bar"><div class="ex-fill" id="exFill"></div></div>
+    </div>
+    <p class="tele-empty" id="teleEmpty">No stint running. Build a grid on the left and deploy to watch 20,000 agents learn at once.</p>
+  </aside>
+</main>
+
+<main class="garage" id="garageView" hidden>
+  <div class="garage-bar">
+    <h2 class="eyebrow">Garage · trained policies</h2>
+    <div class="garage-agg" id="garageAgg"></div>
+  </div>
+  <div class="garage-grid" id="garageGrid"></div>
+  <p class="garage-empty" id="garageEmpty" hidden>No trained policies yet. Launch a stint to start building your garage.</p>
+</main>
+
+<div class="modal" id="calibModal" data-on="false">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div><span class="eyebrow">Calibrate physics</span><h3 id="calibTitle">—</h3></div>
+      <button class="modal-x" id="calibClose" aria-label="Close">✕</button>
+    </div>
+    <p class="modal-sub">Drive the car in Assetto Corsa while this records the <em>real</em> physics from telemetry — it replaces the spec estimates with measured grip, acceleration and braking. Do a few <b>full-throttle pulls</b>, some <b>hard braking zones</b>, and several <b>hard corners</b>. About 60–90 seconds.</p>
+    <div class="calib-live">
+      <div class="cl-stat"><span class="cl-k">FEED</span><b class="cl-v" id="clFeed">—</b></div>
+      <div class="cl-stat"><span class="cl-k">TIME</span><b class="cl-v" id="clSecs">0s</b></div>
+      <div class="cl-stat"><span class="cl-k">FRAMES</span><b class="cl-v" id="clFrames">0</b></div>
+      <div class="cl-stat"><span class="cl-k">SPEED</span><b class="cl-v" id="clSpeed">0 km/h</b></div>
+    </div>
+    <div class="calib-result" id="calibResult" hidden></div>
+    <div class="modal-actions">
+      <button class="deploy" id="calibStart">START RECORDING</button>
+      <button class="deploy box" id="calibStop" hidden>STOP &amp; FIT</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Trained policies and live training state
+*.pt
+ml/sim_live.json
+ml/voxel_live.json
+ml/sim_walls.json
+ml/policies/
+
+# Generated track and car data (regenerated from your own AC install)
+ml/tracks/
+ml/cars/
+*.npz
+*_mesh.bin
+
+# Assetto Corsa assets, never commit game files
+*.kn5
+*.acd
+*.fbx
+*.glb
+fast_lane.ai
+**/acs_dump*.exe
+csp/nndrive/cmd.txt
+csp/nndrive/state.json
+
+# Logs, telemetry, scratch data
+data/
+*.log
+*.csv
+
+# Build artifacts
+build/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
